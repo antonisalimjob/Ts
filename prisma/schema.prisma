@@ -1,0 +1,343 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  END_USER
+  TECHNICIAN
+  ADMIN
+}
+
+enum TicketType {
+  INCIDENT
+  SERVICE_REQUEST
+  PROBLEM
+  CHANGE_REQUEST
+}
+
+enum TicketStatus {
+  NEW
+  OPEN
+  IN_PROGRESS
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CommentVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum FollowUpChannel {
+  EMAIL
+  IN_APP
+  BOTH
+}
+
+enum FollowUpType {
+  MANUAL
+  SLA_REMINDER
+  SLA_ESCALATION
+}
+
+enum ActivityAction {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  ASSIGNED
+  COMMENT_ADDED
+  INTERNAL_NOTE_ADDED
+  FOLLOW_UP_SENT
+  ATTACHMENT_ADDED
+  SLA_BREACHED
+  ESCALATED
+}
+
+enum TeamRole {
+  TEAM_LEAD
+  MEMBER
+}
+
+enum AuditAction {
+  ROLE_CHANGED
+  TEAM_CREATED
+  TEAM_UPDATED
+  TEAM_DELETED
+  TEAM_MEMBERS_CHANGED
+  PROFILE_UPDATED
+  PASSWORD_CHANGED
+  TWO_FACTOR_RESET
+}
+
+enum IssueCategory {
+  ACCESS_IDENTITY
+  SOFTWARE_APPLICATIONS
+  HARDWARE_PERIPHERALS
+  NETWORK_CONNECTIVITY
+  EMAIL_COLLABORATION
+  INFRASTRUCTURE_SERVERS
+  SECURITY_COMPLIANCE
+  CHANGE_RELEASE
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  name                 String
+  passwordHash         String
+  role                 Role     @default(END_USER)
+  avatarUrl            String?
+  department           String?
+  title                String?
+  isActive             Boolean  @default(true)
+  twoFactorSecret      String?
+  isTwoFactorEnabled   Boolean  @default(false)
+  twoFactorBackupCodes Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  requestedTickets Ticket[]            @relation("Requester")
+  assignedTickets  Ticket[]            @relation("Assignee")
+  comments         TicketComment[]
+  followUps        TicketFollowUp[]    @relation("FollowUpActor")
+  activities       TicketActivity[]
+  notifications    Notification[]
+  readReceipts     MessageReadReceipt[]
+  mentions         CommentMention[]
+  teamMemberships  TeamMember[]
+  auditLogs        AuditLog[]
+}
+
+model Category {
+  id          String         @id @default(cuid())
+  code        IssueCategory  @unique
+  name        String         @unique
+  slug        String         @unique
+  description String?
+  examples    String?
+  sortOrder   Int            @default(0)
+  tickets     Ticket[]
+}
+
+model SlaPolicy {
+  id                        String   @id @default(cuid())
+  name                      String
+  priority                  Priority @unique
+  firstResponseMinutes      Int
+  resolutionMinutes         Int
+  inactivityReminderMinutes Int
+  escalationMinutes         Int
+  tickets                   Ticket[]
+}
+
+model FollowUpTemplate {
+  id        String          @id @default(cuid())
+  name      String
+  subject   String
+  body      String
+  audience  Role
+  channel   FollowUpChannel @default(BOTH)
+  isDefault Boolean         @default(false)
+  followUps TicketFollowUp[]
+}
+
+model TicketSequence {
+  prefix String @id
+  value  Int
+}
+
+model Ticket {
+  id                 String       @id @default(cuid())
+  key                String       @unique
+  title              String
+  description        String
+  type               TicketType
+  status             TicketStatus @default(NEW)
+  priority           Priority     @default(MEDIUM)
+  categoryId         String
+  category           Category     @relation(fields: [categoryId], references: [id])
+  requesterId        String
+  requester          User         @relation("Requester", fields: [requesterId], references: [id])
+  assigneeId         String?
+  assignee           User?        @relation("Assignee", fields: [assigneeId], references: [id])
+  slaPolicyId        String
+  slaPolicy          SlaPolicy    @relation(fields: [slaPolicyId], references: [id])
+  firstResponseDueAt DateTime?
+  resolutionDueAt    DateTime?
+  firstRespondedAt   DateTime?
+  lastActivityAt     DateTime     @default(now())
+  lastFollowUpAt     DateTime?
+  reminderSentAt     DateTime?
+  escalatedAt        DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  teamId      String?
+  team        Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  comments    TicketComment[]
+  followUps   TicketFollowUp[]
+  activities  TicketActivity[]
+  attachments Attachment[]
+
+  @@index([teamId])
+
+  @@index([status, lastActivityAt])
+  @@index([assigneeId, status])
+  @@index([requesterId])
+}
+
+model TicketComment {
+  id         String            @id @default(cuid())
+  ticketId   String
+  ticket     Ticket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User              @relation(fields: [authorId], references: [id])
+  body       String
+  bodyHtml   String?
+  visibility CommentVisibility @default(PUBLIC)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  attachments Attachment[]
+  mentions    CommentMention[]
+  receipts    MessageReadReceipt[]
+
+  @@index([ticketId, createdAt])
+}
+
+model CommentMention {
+  id        String        @id @default(cuid())
+  commentId String
+  comment   TicketComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+
+  @@unique([commentId, userId])
+}
+
+model MessageReadReceipt {
+  id        String        @id @default(cuid())
+  commentId String
+  comment   TicketComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  readAt    DateTime      @default(now())
+
+  @@unique([commentId, userId])
+}
+
+model Attachment {
+  id           String         @id @default(cuid())
+  filename     String
+  url          String
+  mimeType     String
+  sizeBytes    Int
+  ticketId     String?
+  ticket       Ticket?        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  commentId    String?
+  comment      TicketComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  uploadedById String
+  createdAt    DateTime       @default(now())
+}
+
+model TicketFollowUp {
+  id            String            @id @default(cuid())
+  ticketId      String
+  ticket        Ticket            @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  triggeredById String?
+  triggeredBy   User?             @relation("FollowUpActor", fields: [triggeredById], references: [id])
+  type          FollowUpType
+  channel       FollowUpChannel
+  templateId    String?
+  template      FollowUpTemplate? @relation(fields: [templateId], references: [id])
+  subject       String
+  message       String
+  sentToUserIds String[]
+  sentAt        DateTime          @default(now())
+
+  @@index([ticketId, sentAt])
+}
+
+model TicketActivity {
+  id        String         @id @default(cuid())
+  ticketId  String
+  ticket    Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?          @relation(fields: [actorId], references: [id])
+  action    ActivityAction
+  fromValue String?
+  toValue   String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  members     TeamMember[]
+  tickets     Ticket[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamRole @default(MEMBER)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  actorId    String?
+  actor      User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     AuditAction
+  entityType String
+  entityId   String
+  fromValue  String?
+  toValue    String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  ticketKey String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}

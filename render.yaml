@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: nexus-sm
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:migrate
+    healthCheckPath: /login
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: TWO_FACTOR_ISSUER
+        value: Nexus SM
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: TWO_FACTOR_ENCRYPTION_KEY
+        sync: false
+      - key: APP_URL
+        sync: false
