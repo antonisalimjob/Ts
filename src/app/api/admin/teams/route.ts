@@ -37,6 +37,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Mapping role agar sesuai dengan enum Prisma Anda (default ke ADMIN/AGENT)
+    let validRole: any = "AGENT";
+    if (role === "ADMIN" || role === "IT Lead / Admin") {
+      validRole = "ADMIN";
+    } else if (role === "AGENT" || role === "IT Support / Agent") {
+      validRole = "AGENT";
+    }
+
     const defaultPassword = "Welcome123!";
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
@@ -45,7 +53,7 @@ export async function POST(req: NextRequest) {
         name: name || email.split("@")[0],
         email: email.toLowerCase().trim(),
         passwordHash: passwordHash,
-        role: role || "AGENT",
+        role: validRole, // Menggunakan role Enum yang valid
       },
     });
 
