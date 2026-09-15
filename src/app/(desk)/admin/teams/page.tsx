@@ -1,5 +1,5 @@
-import TeamsClient from "@/components/admin/teams-client";
+import TeamsAndRoles from "@/components/admin/teams-and-roles";
 
 export default function TeamsPage() {
-  return <TeamsClient />;
+  return <TeamsAndRoles />;
 }
