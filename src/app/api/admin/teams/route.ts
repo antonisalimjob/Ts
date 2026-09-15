@@ -16,9 +16,11 @@ export async function GET() {
       },
       orderBy: { id: "desc" },
     });
-    const teams = await prisma.team.findMany({
-      include: { members: true },
-    }).catch(() => []);
+    const teams = await prisma.team
+      .findMany({
+        include: { members: true },
+      })
+      .catch(() => []);
 
     return NextResponse.json({ users, teams });
   } catch (error: any) {
@@ -37,24 +39,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Mapping role agar sesuai dengan enum Prisma Anda (default ke ADMIN/AGENT)
-    let validRole: any = "AGENT";
-    if (role === "ADMIN" || role === "IT Lead / Admin") {
-      validRole = "ADMIN";
-    } else if (role === "AGENT" || role === "IT Support / Agent") {
-      validRole = "AGENT";
-    }
-
     const defaultPassword = "Welcome123!";
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
+    // Siapkan data user dasar
+    const userData: any = {
+      name: name || email.split("@")[0],
+      email: email.toLowerCase().trim(),
+      passwordHash: passwordHash,
+    };
+
+    // Sertakan role hanya jika diberikan dan tidak kosong
+    if (role && role !== "USER") {
+      userData.role = role;
+    }
+
     const newUser = await prisma.user.create({
-      data: {
-        name: name || email.split("@")[0],
-        email: email.toLowerCase().trim(),
-        passwordHash: passwordHash,
-        role: validRole, // Menggunakan role Enum yang valid
-      },
+      data: userData,
     });
 
     return NextResponse.json({
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
       );
     }
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error.message || String(error) },
       { status: 500 }
     );
   }
