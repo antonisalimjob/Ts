@@ -1,55 +1,41 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
-import { fromAuthError, jsonError } from "@/lib/http";
 
-export async function GET() {
+export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
-    const users = await prisma.user.findMany({
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        department: true,
-        title: true,
-        isActive: true,
-        createdAt: true,
-        isTwoFactorEnabled: true,
-        teamMemberships: {
-          include: {
-            team: { select: { id: true, name: true } },
-          },
-          orderBy: { team: { name: "asc" } },
-        },
+    const { name, email, role } = await req.json();
+
+    if (!email || !email.includes("@")) {
+      return NextResponse.json({ error: "Email tidak valid" }, { status: 400 });
+    }
+
+    // Hash password default untuk user baru (misal: Welcome123!)
+    const defaultPassword = "Welcome123!";
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        name: name || email.split("@")[0],
+        email: email.toLowerCase().trim(),
+        passwordHash: passwordHash,
+        role: role || "AGENT", // atau 'USER', 'ADMIN'
       },
     });
 
-    return NextResponse.json(
-      users.map((user) => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department,
-        title: user.title,
-        isActive: user.isActive,
-        createdAt: user.createdAt.toISOString(),
-        isTwoFactorEnabled: user.isTwoFactorEnabled,
-        teams: user.teamMemberships.map((membership) => ({
-          id: membership.team.id,
-          name: membership.team.name,
-          teamRole: membership.role,
-        })),
-      })),
-    );
-  } catch (error) {
-    try {
-      return fromAuthError(error);
-    } catch {
-      return jsonError("Could not load users", 500);
+    return NextResponse.json({
+      success: true,
+      message: `User ${email} berhasil ditambahkan!`,
+      user: { id: newUser.id, email: newUser.email },
+      defaultPassword,
+    });
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Email sudah terdaftar!" },
+        { status: 400 }
+      );
     }
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
