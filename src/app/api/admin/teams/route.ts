@@ -41,21 +41,67 @@ export async function POST(req: NextRequest) {
 
     const defaultPassword = "Welcome123!";
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanName = name || cleanEmail.split("@")[0];
 
-    // Casting role ke any untuk menghindari bentrok TypeScript Enum
-    const userData: any = {
-      name: name || email.split("@")[0],
-      email: email.toLowerCase().trim(),
-      passwordHash: passwordHash,
-    };
-
+    // Variasi kemungkinan nilai Enum Role di schema Prisma Anda
+    const roleCandidates = [];
     if (role) {
-      userData.role = role;
+      roleCandidates.push(role);
+      roleCandidates.push(String(role).toLowerCase());
+      roleCandidates.push(String(role).toUpperCase());
+    }
+    roleCandidates.push("AGENT", "agent", "ADMIN", "admin", "USER", "user", "MEMBER");
+
+    let newUser = null;
+    let lastError = null;
+
+    // Coba buat user dengan variasi Enum role hingga berhasil
+    for (const r of roleCandidates) {
+      try {
+        newUser = await prisma.user.create({
+          data: {
+            name: cleanName,
+            email: cleanEmail,
+            passwordHash: passwordHash,
+            role: r as any,
+          },
+        });
+        if (newUser) break;
+      } catch (err: any) {
+        lastError = err;
+        if (err.code === "P2002") {
+          return NextResponse.json(
+            { success: false, error: "Email sudah terdaftar!" },
+            { status: 400 }
+          );
+        }
+      }
     }
 
-    const newUser = await prisma.user.create({
-      data: userData,
-    });
+    // Jika seluruh variasi role gagal, buat user tanpa menyertakan field role (memakai default schema)
+    if (!newUser) {
+      try {
+        newUser = await prisma.user.create({
+          data: {
+            name: cleanName,
+            email: cleanEmail,
+            passwordHash: passwordHash,
+          },
+        });
+      } catch (err: any) {
+        if (err.code === "P2002") {
+          return NextResponse.json(
+            { success: false, error: "Email sudah terdaftar!" },
+            { status: 400 }
+          );
+        }
+        return NextResponse.json(
+          { success: false, error: err.message || "Gagal membuat user" },
+          { status: 500 }
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -69,12 +115,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    if (error.code === "P2002") {
-      return NextResponse.json(
-        { success: false, error: "Email sudah terdaftar!" },
-        { status: 400 }
-      );
-    }
     return NextResponse.json(
       { success: false, error: error.message || String(error) },
       { status: 500 }
