@@ -12,10 +12,10 @@ export async function GET() {
         name: true,
         email: true,
         role: true,
-        twoFactorEnabled: true,
       },
       orderBy: { id: "desc" },
     });
+
     const teams = await prisma.team
       .findMany({
         include: { members: true },
@@ -42,15 +42,14 @@ export async function POST(req: NextRequest) {
     const defaultPassword = "Welcome123!";
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
-    // Siapkan data user dasar
+    // Casting role ke any untuk menghindari bentrok TypeScript Enum
     const userData: any = {
       name: name || email.split("@")[0],
       email: email.toLowerCase().trim(),
       passwordHash: passwordHash,
     };
 
-    // Sertakan role hanya jika diberikan dan tidak kosong
-    if (role && role !== "USER") {
+    if (role) {
       userData.role = role;
     }
 
