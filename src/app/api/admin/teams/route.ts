@@ -44,19 +44,28 @@ export async function POST(req: NextRequest) {
     const cleanEmail = email.toLowerCase().trim();
     const cleanName = name || cleanEmail.split("@")[0];
 
-    // Variasi kemungkinan nilai Enum Role di schema Prisma Anda
-    const roleCandidates = [];
-    if (role) {
-      roleCandidates.push(role);
-      roleCandidates.push(String(role).toLowerCase());
-      roleCandidates.push(String(role).toUpperCase());
+    // Pemetaan presisi dari opsi UI dropdown ke Enum Prisma
+    let roleCandidates: string[] = [];
+
+    switch (role) {
+      case "IT Lead / Admin":
+      case "ADMIN":
+        roleCandidates = ["ADMIN", "admin", "LEAD"];
+        break;
+      case "User / End User":
+      case "USER":
+        roleCandidates = ["USER", "user", "CUSTOMER", "customer", "END_USER", "MEMBER"];
+        break;
+      case "IT Support / Agent":
+      case "AGENT":
+      default:
+        roleCandidates = ["AGENT", "agent", "SUPPORT"];
+        break;
     }
-    roleCandidates.push("AGENT", "agent", "ADMIN", "admin", "USER", "user", "MEMBER");
 
     let newUser = null;
-    let lastError = null;
 
-    // Coba buat user dengan variasi Enum role hingga berhasil
+    // Iterasi kandidat Enum hingga cocok dengan schema PostgreSQL
     for (const r of roleCandidates) {
       try {
         newUser = await prisma.user.create({
@@ -69,7 +78,6 @@ export async function POST(req: NextRequest) {
         });
         if (newUser) break;
       } catch (err: any) {
-        lastError = err;
         if (err.code === "P2002") {
           return NextResponse.json(
             { success: false, error: "Email sudah terdaftar!" },
@@ -79,28 +87,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Jika seluruh variasi role gagal, buat user tanpa menyertakan field role (memakai default schema)
+    // Fallback: Jika tidak ada variasi Enum yang cocok, buat user dengan default schema
     if (!newUser) {
-      try {
-        newUser = await prisma.user.create({
-          data: {
-            name: cleanName,
-            email: cleanEmail,
-            passwordHash: passwordHash,
-          },
-        });
-      } catch (err: any) {
-        if (err.code === "P2002") {
-          return NextResponse.json(
-            { success: false, error: "Email sudah terdaftar!" },
-            { status: 400 }
-          );
-        }
-        return NextResponse.json(
-          { success: false, error: err.message || "Gagal membuat user" },
-          { status: 500 }
-        );
-      }
+      newUser = await prisma.user.create({
+        data: {
+          name: cleanName,
+          email: cleanEmail,
+          passwordHash: passwordHash,
+        },
+      });
     }
 
     return NextResponse.json({
