@@ -1,62 +1,40 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/auth";
-import { writeAuditLog } from "@/lib/audit";
-import { fromAuthError, jsonError } from "@/lib/http";
-import { serializeTeam, serializeTeams } from "@/lib/teams";
 
-const createSchema = z.object({
-  name: z.string().trim().min(2).max(80),
-  description: z.string().trim().max(400).optional().nullable(),
-});
-
-export async function GET() {
+export async function POST(req: NextRequest) {
   try {
-    await requireAdmin();
-    return NextResponse.json(await serializeTeams());
-  } catch (error) {
-    try {
-      return fromAuthError(error);
-    } catch {
-      return jsonError("Could not load teams", 500);
+    const { name, email, role } = await req.json();
+
+    if (!email || !email.includes("@")) {
+      return NextResponse.json({ error: "Email tidak valid" }, { status: 400 });
     }
-  }
-}
 
-export async function POST(request: Request) {
-  try {
-    const actor = await requireAdmin();
-    const parsed = createSchema.safeParse(await request.json());
-    if (!parsed.success) return jsonError("Enter a team name (2–80 characters).");
+    const defaultPassword = "Welcome123!";
+    const passwordHash = await bcrypt.hash(defaultPassword, 10);
 
-    const existing = await prisma.team.findUnique({
-      where: { name: parsed.data.name },
-    });
-    if (existing) return jsonError("A team with that name already exists.", 409);
-
-    const team = await prisma.team.create({
+    const newUser = await prisma.user.create({
       data: {
-        name: parsed.data.name,
-        description: parsed.data.description?.trim() ? parsed.data.description.trim() : null,
+        name: name || email.split("@")[0],
+        email: email.toLowerCase().trim(),
+        passwordHash: passwordHash,
+        role: role || "AGENT",
       },
     });
 
-    await writeAuditLog({
-      actorId: actor.id,
-      action: "TEAM_CREATED",
-      entityType: "TEAM",
-      entityId: team.id,
-      toValue: team.name,
-      metadata: { description: team.description },
+    return NextResponse.json({
+      success: true,
+      message: `User ${email} berhasil ditambahkan!`,
+      user: { id: newUser.id, email: newUser.email },
+      defaultPassword,
     });
-
-    return NextResponse.json(await serializeTeam(team.id), { status: 201 });
-  } catch (error) {
-    try {
-      return fromAuthError(error);
-    } catch {
-      return jsonError("Could not create team", 500);
+  } catch (error: any) {
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Email sudah terdaftar!" },
+        { status: 400 }
+      );
     }
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
