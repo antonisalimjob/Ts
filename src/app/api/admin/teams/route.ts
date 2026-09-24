@@ -65,7 +65,6 @@ export async function POST(req: NextRequest) {
 
     let newUser = null;
 
-    // Iterasi kandidat Enum hingga cocok dengan schema PostgreSQL
     for (const r of roleCandidates) {
       try {
         newUser = await prisma.user.create({
@@ -87,7 +86,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback: Jika tidak ada variasi Enum yang cocok, buat user dengan default schema
     if (!newUser) {
       newUser = await prisma.user.create({
         data: {
@@ -112,6 +110,74 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     return NextResponse.json(
       { success: false, error: error.message || String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { userId, name, role } = await req.json();
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "User ID dibutuhkan" },
+        { status: 400 }
+      );
+    }
+
+    let roleEnum = role;
+    if (role === "IT Lead / Admin") roleEnum = "ADMIN";
+    if (role === "IT Support / Agent") roleEnum = "AGENT";
+    if (role === "User / End User") roleEnum = "USER";
+
+    let updatedUser = null;
+    try {
+      updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { name, role: roleEnum as any },
+      });
+    } catch (e) {
+      updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: { name },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: updatedUser,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { userId } = await req.json();
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "User ID dibutuhkan" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "User berhasil dihapus",
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message || "Gagal menghapus user" },
       { status: 500 }
     );
   }
