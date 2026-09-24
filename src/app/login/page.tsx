@@ -1,188 +1,140 @@
 "use client";
 
-import { LifeBuoy, ShieldCheck } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-function LoginForm() {
+export default function LoginPage() {
   const router = useRouter();
-  const nextPath = useSearchParams().get("next") || "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [otp, setOtp] = useState("");
-  const [useBackup, setUseBackup] = useState(false);
-  const [step, setStep] = useState<"credentials" | "otp">("credentials");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
-  async function submitCredentials(event: React.FormEvent) {
-    event.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
-    setError("");
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      requiresTwoFactor?: boolean;
-    };
-    setLoading(false);
-    if (!response.ok) {
-      setError(payload.error ?? "Those credentials were not recognized.");
-      return;
-    }
-    if (payload.requiresTwoFactor) {
-      setStep("otp");
-      setOtp("");
-      return;
-    }
-    router.push(nextPath);
-    router.refresh();
-  }
 
-  async function submitOtp(event: React.FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError("");
-    const response = await fetch("/api/auth/2fa/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: otp.replaceAll(" ", ""),
-        backup: useBackup,
-      }),
-    });
-    setLoading(false);
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      setError(payload.error ?? "That verification code is not valid.");
-      return;
+    try {
+      const endpoint = isSignUp ? "/api/auth/signup" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (isSignUp) {
+          alert("Pendaftaran berhasil! Silakan login.");
+          setIsSignUp(false);
+        } else {
+          router.push("/admin/teams");
+        }
+      } else {
+        alert("Gagal: " + (data.error || "Terjadi kesalahan"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setLoading(false);
     }
-    router.push(nextPath);
-    router.refresh();
-  }
+  };
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.1fr_0.9fr]">
-      <section className="hidden flex-col justify-between bg-[#0b1220] p-12 text-white lg:flex">
+    <div className="min-h-screen flex text-slate-800">
+      {/* Left Banner */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-12 flex-col justify-between text-white">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-400 text-slate-950">
-            <LifeBuoy className="h-5 w-5" />
+          <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-slate-900 text-xl">
+            ⊗
           </div>
-          <p className="text-lg font-semibold">Nexus Service Management</p>
+          <span className="font-bold text-xl tracking-tight">Nexus Service Management</span>
         </div>
-        <div className="max-w-lg">
-          <p className="text-sm uppercase tracking-[0.2em] text-teal-300">ITSM workspace</p>
-          <h1 className="mt-4 text-4xl font-semibold leading-tight">
+        <div className="space-y-4 max-w-lg">
+          <p className="text-emerald-400 font-semibold text-sm tracking-wider uppercase">
+            ITSM Workspace
+          </p>
+          <h1 className="text-4xl font-bold leading-tight">
             Tickets, live support chat, and SLA follow-ups in one desk.
           </h1>
-          <p className="mt-4 text-slate-400">
+          <p className="text-slate-400 text-sm leading-relaxed">
             Dual-channel conversations, one-click reminders, and an audit trail inspired by Jira Service Management, ServiceNow, and Freshservice.
           </p>
         </div>
-        <p className="text-xs text-slate-500">Protected with optional authenticator 2FA.</p>
-      </section>
-      <section className="flex items-center justify-center p-6">
-        {step === "credentials" ? (
-          <form onSubmit={submitCredentials} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
-            <h2 className="text-xl font-semibold text-slate-950">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500">Sign in to your account</p>
-            <div className="mt-6 space-y-3">
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  className="mt-1"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  className="mt-1"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-            <Button className="mt-5 w-full" disabled={loading}>
-              {loading ? "Signing in…" : "Enter service desk"}
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={submitOtp} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
-            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <h2 className="text-xl font-semibold text-slate-950">Two-factor verification</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {useBackup
-                ? "Enter one of your 8-digit emergency backup codes."
-                : "Enter the 6-digit code from Google Authenticator or Microsoft Authenticator."}
+        <div className="text-xs text-slate-500">© Nexus SM. All rights reserved.</div>
+      </div>
+
+      {/* Right Login / Sign Up Form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-slate-50">
+        <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-slate-200/80 space-y-6">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">
+              {isSignUp ? "Create an account" : "Sign in"}
+            </h2>
+            <p className="text-sm text-slate-500 mt-1">
+              {isSignUp
+                ? "Register a new client or agent account"
+                : "Sign in to your account"}
             </p>
-            <div className="mt-6">
-              <Label htmlFor="otp">{useBackup ? "Backup code" : "Authenticator code"}</Label>
-              <Input
-                id="otp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="mt-1 tracking-[0.3em]"
-                value={otp}
-                onChange={(event) => setOtp(event.target.value)}
-                maxLength={useBackup ? 8 : 6}
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                EMAIL
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 required
               />
             </div>
-            {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
-            <Button className="mt-5 w-full" disabled={loading}>
-              {loading ? "Verifying…" : "Verify and continue"}
-            </Button>
+
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-500 mb-1">
+                PASSWORD
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                required
+              />
+            </div>
+
             <button
-              type="button"
-              className="mt-3 w-full text-sm font-medium text-teal-700 hover:underline"
-              onClick={() => {
-                setUseBackup((current) => !current);
-                setOtp("");
-                setError("");
-              }}
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition shadow-sm text-sm"
             >
-              {useBackup ? "Use authenticator app instead" : "Lost your device? Use a backup code"}
-            </button>
-            <button
-              type="button"
-              className="mt-2 w-full text-sm text-slate-500 hover:text-slate-800"
-              onClick={() => {
-                setStep("credentials");
-                setError("");
-                setOtp("");
-              }}
-            >
-              Back to sign in
+              {loading
+                ? "Processing..."
+                : isSignUp
+                ? "Sign Up"
+                : "Enter service desk"}
             </button>
           </form>
-        )}
-      </section>
-    </div>
-  );
-}
 
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginForm />
-    </Suspense>
+          {/* Switcher Login <-> Sign Up */}
+          <div className="text-center pt-2 border-t border-slate-100">
+            <p className="text-sm text-slate-600">
+              {isSignUp ? "Already have an account?" : "Don't have an account yet?"}{" "}
+              <button
+                type="button"
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="font-semibold text-emerald-600 hover:underline ml-1"
+              >
+                {isSignUp ? "Sign In" : "Sign Up"}
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
