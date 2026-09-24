@@ -2,18 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export default function LoginPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
 
-  // Form Submit biasa (Email & Password)
+  // Form Submit (Email & Password)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -44,27 +42,21 @@ export default function LoginPage() {
     }
   };
 
-  // Login / Register via Google OAuth
-  const handleGoogleAuth = async () => {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (error) {
-        alert("Gagal koneksi Google: " + error.message);
-      }
-    } catch (err: any) {
-      alert("Error OAuth: " + err.message);
+  // Google OAuth Auth via Direct API Route
+  const handleGoogleAuth = () => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl) {
+      window.location.href = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(
+        window.location.origin + "/auth/callback"
+      )}`;
+    } else {
+      alert("Google Auth siap digunakan setelah Supabase Provider dikonfigurasi.");
     }
   };
 
   return (
     <div className="min-h-screen flex text-slate-800">
-      {/* Banner Samping Kiri */}
+      {/* Banner Kiri */}
       <div className="hidden lg:flex lg:w-1/2 bg-slate-900 p-12 flex-col justify-between text-white">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-slate-900 text-xl">
@@ -155,7 +147,7 @@ export default function LoginPage() {
             </span>
           </div>
 
-          {/* Tombol Sign Up / Sign In with Google */}
+          {/* Tombol Google Auth */}
           <button
             type="button"
             onClick={handleGoogleAuth}
