@@ -42,16 +42,13 @@ export default function LoginPage() {
     }
   };
 
-  // Google OAuth Auth via Direct API Route
+  // Google OAuth Auth
   const handleGoogleAuth = () => {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (supabaseUrl) {
-      window.location.href = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(
-        window.location.origin + "/auth/callback"
-      )}`;
-    } else {
-      alert("Google Auth siap digunakan setelah Supabase Provider dikonfigurasi.");
-    }
+    // Tautan direct ke endpoint Supabase OAuth Anda
+    const supabaseProjectUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
+    const redirectTo = encodeURIComponent(`${window.location.origin}/auth/callback`);
+    
+    window.location.href = `${supabaseProjectUrl}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
   };
 
   return (
