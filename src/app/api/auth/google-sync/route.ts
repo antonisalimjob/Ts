@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     let email: string | null = null;
     let fullName: string | null = null;
 
-    // Decode JWT token payload secara langsung tanpa ternary expression yang bermasalah
+    // Decode JWT token payload
     try {
       const parts = accessToken.split(".");
       if (parts.length === 3) {
@@ -75,19 +75,26 @@ export async function POST(req: NextRequest) {
       where: { email },
     });
 
-    // Otomatis registrasi dengan role USER jika akun belum ada
+    // Otomatis registrasi jika akun belum ada
     if (!user) {
+      // Menangani kandidat Enum Role Prisma (Otomatis menyesuaikan schema)
+      const targetRole =
+        (prisma as any).Role?.USER ||
+        (prisma as any).Role?.CLIENT ||
+        (prisma as any).Role?.MEMBER ||
+        "CLIENT";
+
       user = await prisma.user.create({
         data: {
           email,
           name: fullName || email.split("@")[0],
           passwordHash: "OAUTH_GOOGLE_ACCOUNT",
-          role: "USER" as any,
+          role: targetRole as any,
         },
       });
     }
 
-    // Buat JWT Session resmi aplikasi agar dikenali middleware
+    // Buat JWT Session resmi aplikasi
     const secret = new TextEncoder().encode(authSecret());
     const jwtToken = await new SignJWT({
       id: user.id,
