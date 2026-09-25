@@ -3,10 +3,19 @@ import { jwtVerify } from "jose";
 import { SESSION_COOKIE } from "@/lib/constants";
 import { authSecret } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/2fa/verify"];
+// Tambahkan endpoint auth callback dan google-sync ke PUBLIC_PATHS
+const PUBLIC_PATHS = [
+  "/login", 
+  "/api/auth/login", 
+  "/api/auth/2fa/verify",
+  "/api/auth/google-sync",
+  "/auth/callback",
+  "/auth/callback/client"
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/socket.io") ||
@@ -16,7 +25,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (PUBLIC_PATHS.some((path) => pathname === path)) {
+  // Izinkan akses langsung tanpa perlu token untuk PUBLIC_PATHS
+  if (PUBLIC_PATHS.some((path) => pathname.startsWith(path))) {
     return NextResponse.next();
   }
 
@@ -44,13 +54,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api/register (Bypass register endpoint)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
     "/((?!api/register|_next/static|_next/image|favicon.ico).*)",
   ],
 };
