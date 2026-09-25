@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const { accessToken } = await req.json();
+    const body = await req.json();
+    const accessToken = body?.accessToken;
 
     if (!accessToken) {
       return NextResponse.json(
@@ -45,31 +46,30 @@ export async function POST(req: NextRequest) {
     });
 
     if (!user) {
+      // Menggunakan casting 'as any' agar aman dari konflik Enum Role Prisma
       user = await prisma.user.create({
         data: {
           email,
           name: fullName,
-          role: "USER",
+          role: "USER" as any,
         },
       });
     }
 
-    const response = NextResponse.json({ success: true, user });
+    const res = NextResponse.json({ success: true, user });
 
-    response.cookies.set(
-      "user_session",
-      JSON.stringify({ id: user.id, email: user.email, role: user.role }),
-      {
-        httpOnly: true,
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      }
-    );
+    res.cookies.set({
+      name: "user_session",
+      value: JSON.stringify({ id: user.id, email: user.email }),
+      httpOnly: true,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
 
-    return response;
+    return res;
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, error: error.message || "Internal server error" },
+      { success: false, error: error?.message || "Internal server error" },
       { status: 500 }
     );
   }
