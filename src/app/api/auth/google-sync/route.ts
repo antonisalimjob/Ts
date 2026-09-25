@@ -18,48 +18,70 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabaseUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
-    const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
-      },
-    });
+    // Dekode payload JWT token dari Supabase untuk mengambil email & data profil secara langsung
+    let email: string | null = null;
+    let fullName: string | null = null;
 
-    if (!userRes.ok) {
-      return NextResponse.json(
-        { success: false, error: "Invalid token" },
-        { status: 401 }
-      );
+    try {
+      const parts = accessToken.split(".");
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base68" ? "base64" : "utf8").toString("utf-8"));
+        email = payload.email || payload.user_metadata?.email;
+        fullName = payload.user_metadata?.full_name || payload.name || email?.split("@")[0];
+      }
+    } catch (e) {
+      console.warn("Direct JWT decode fallback triggered");
     }
 
-    const userData = await userRes.json();
-    const email = userData.email;
-    const fullName = userData.user_metadata?.full_name || email.split("@")[0];
+    // Jika dekode manual gagal, lakukan verifikasi via REST API Supabase
+    if (!email) {
+      const supabaseUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      
+      const userRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: anonKey,
+        },
+      });
+
+      if (!userRes.ok) {
+        return NextResponse.json(
+          { success: false, error: "Invalid token" },
+          { status: 401 }
+        );
+      }
+
+      const userData = await userRes.json();
+      email = userData.email;
+      fullName = userData.user_metadata?.full_name || email?.split("@")[0];
+    }
 
     if (!email) {
       return NextResponse.json(
-        { success: false, error: "Email not found" },
+        { success: false, error: "Email not found in token" },
         { status: 400 }
       );
     }
 
+    // Cari user di database Prisma
     let user = await prisma.user.findUnique({
       where: { email },
     });
 
+    // Otomatis registrasi dengan role USER jika akun belum terdaftar
     if (!user) {
       user = await prisma.user.create({
         data: {
           email,
-          name: fullName,
+          name: fullName || email.split("@")[0],
           passwordHash: "OAUTH_GOOGLE_ACCOUNT",
           role: "USER" as any,
         },
       });
     }
 
-    // Buat JWT Token resmi agar lolos verifikasi jwtVerify di middleware.ts
+    // Buat JWT Session resmi aplikasi agar dikenali oleh middleware
     const secret = new TextEncoder().encode(authSecret());
     const jwtToken = await new SignJWT({
       id: user.id,
@@ -72,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({ success: true, user });
 
-    // Set cookie menggunakan NAMA COOKIE RESMI yang dibaca oleh middleware (SESSION_COOKIE)
+    // Set cookie resmi SESSION_COOKIE
     res.cookies.set({
       name: SESSION_COOKIE,
       value: jwtToken,
