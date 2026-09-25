@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { SignJWT } from "jose";
 import { SESSION_COOKIE } from "@/lib/constants";
 import { authSecret } from "@/lib/env";
+import { Role } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
       console.warn("Direct JWT decode fallback triggered");
     }
 
-    // Fallback verifikasi via Supabase REST API jika decode manual gagal
+    // Fallback verifikasi via Supabase REST API
     if (!email) {
       const supabaseUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -75,26 +76,19 @@ export async function POST(req: NextRequest) {
       where: { email },
     });
 
-    // Otomatis registrasi jika akun belum ada
+    // Otomatis registrasi dengan Role.END_USER jika akun belum ada
     if (!user) {
-      // Menangani kandidat Enum Role Prisma (Otomatis menyesuaikan schema)
-      const targetRole =
-        (prisma as any).Role?.USER ||
-        (prisma as any).Role?.CLIENT ||
-        (prisma as any).Role?.MEMBER ||
-        "CLIENT";
-
       user = await prisma.user.create({
         data: {
           email,
           name: fullName || email.split("@")[0],
           passwordHash: "OAUTH_GOOGLE_ACCOUNT",
-          role: targetRole as any,
+          role: Role.END_USER, // Menggunakan Enum resmi END_USER
         },
       });
     }
 
-    // Buat JWT Session resmi aplikasi
+    // Buat JWT Session resmi aplikasi agar dikenali middleware
     const secret = new TextEncoder().encode(authSecret());
     const jwtToken = await new SignJWT({
       id: user.id,
