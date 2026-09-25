@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 export default function AuthCallbackClientPage() {
-  const router = useRouter();
-
   useEffect(() => {
     const handleAuth = async () => {
+      // Ambil token dari URL Fragment (#access_token=...) atau query string
       const hash = window.location.hash;
-      const params = new URLSearchParams(hash.replace("#", "?"));
+      const search = window.location.search;
+      
+      const params = new URLSearchParams(
+        hash ? hash.replace("#", "?") : search
+      );
       const accessToken = params.get("access_token");
 
       if (accessToken) {
         try {
+          // Sync user ke Prisma & simpan cookie
           const res = await fetch("/api/auth/google-sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -21,7 +24,8 @@ export default function AuthCallbackClientPage() {
           });
 
           if (res.ok) {
-            router.push("/admin/teams");
+            // Gunakan Hard Redirect agar cookie user_session langsung aktif secara Server-Side
+            window.location.href = "/admin/teams";
             return;
           }
         } catch (err) {
@@ -29,11 +33,12 @@ export default function AuthCallbackClientPage() {
         }
       }
 
-      router.push("/login");
+      // Jika gagal atau tidak ada token, kembalikan ke login
+      window.location.href = "/login";
     };
 
     handleAuth();
-  }, [router]);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-4">
