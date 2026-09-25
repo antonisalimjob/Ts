@@ -1,41 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(req: NextRequest) {
+export const dynamic = "force-dynamic";
+
+export async function GET() {
   try {
-    const { name, email, role } = await req.json();
-
-    if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Email tidak valid" }, { status: 400 });
-    }
-
-    // Hash password default untuk user baru (misal: Welcome123!)
-    const defaultPassword = "Welcome123!";
-    const passwordHash = await bcrypt.hash(defaultPassword, 10);
-
-    const newUser = await prisma.user.create({
-      data: {
-        name: name || email.split("@")[0],
-        email: email.toLowerCase().trim(),
-        passwordHash: passwordHash,
-        role: role || "AGENT", // atau 'USER', 'ADMIN'
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      message: `User ${email} berhasil ditambahkan!`,
-      user: { id: newUser.id, email: newUser.email },
-      defaultPassword,
-    });
+    return NextResponse.json({ success: true, users });
   } catch (error: any) {
-    if (error.code === "P2002") {
+    console.error("GET Users Error:", error);
+    return NextResponse.json(
+      { success: false, error: error?.message || "Failed to fetch users" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { id, name, role } = body;
+
+    if (!id) {
       return NextResponse.json(
-        { error: "Email sudah terdaftar!" },
+        { success: false, error: "User ID is required" },
         { status: 400 }
       );
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: {
+        name,
+        role: role as any,
+      },
+    });
+
+    return NextResponse.json({ success: true, user: updatedUser });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error?.message || "Failed to update user" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "User ID is required" },
+        { status: 400 }
+      );
+    }
+
+    await prisma.user.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error?.message || "Failed to delete user" },
+      { status: 500 }
+    );
   }
 }
