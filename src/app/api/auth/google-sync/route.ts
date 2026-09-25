@@ -52,18 +52,21 @@ export async function POST(req: NextRequest) {
         data: {
           email,
           name: fullName,
-          passwordHash: "OAUTH_GOOGLE_ACCOUNT", // Placeholder untuk akun Google OAuth
-          role: "USER" as any,                  // Memastikan semua sign in Google ber-level USER
+          passwordHash: "OAUTH_GOOGLE_ACCOUNT",
+          role: "USER" as any,
         },
       });
     }
 
     const res = NextResponse.json({ success: true, user });
 
+    // Set cookie session dengan SameSite lax agar terbaca langsung saat redirect
     res.cookies.set({
       name: "user_session",
       value: JSON.stringify({ id: user.id, email: user.email, role: user.role }),
       httpOnly: true,
+      sameSite: "lax",
+      secure: true,
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
     });
