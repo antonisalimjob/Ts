@@ -21,27 +21,29 @@ export async function GET(req: NextRequest) {
 
     let whereClause: any = {};
 
-    // 1. END_USER: Hanya boleh melihat tiket buatan dirinya sendiri
+    // 1. END_USER: Hanya melihat tiket buatan sendiri
     if (userRole === "END_USER") {
-      whereClause = { createdById: userId };
+      whereClause = {
+        OR: [
+          { createdById: userId },
+          { userId: userId },
+          { authorId: userId },
+        ],
+      };
     } 
-    // 2. TECHNICIAN: Boleh melihat tiket yang ditugaskan ke dirinya atau timnya
+    // 2. TECHNICIAN: Tiket assigned atau berstatus OPEN
     else if (userRole === "TECHNICIAN") {
       whereClause = {
         OR: [
           { assignedToId: userId },
-          { status: "OPEN" }, // Tiket antrean publik yang siap ditangani
+          { status: "OPEN" },
         ],
       };
     }
-    // 3. ADMIN: Tidak ada pembatasan (whereClause = {} mencakup seluruh tiket)
+    // 3. ADMIN: Mengakses seluruh tiket (whereClause tetap {})
 
     const tickets = await prisma.ticket.findMany({
       where: whereClause,
-      include: {
-        createdBy: { select: { name: true, email: true } },
-        assignedTo: { select: { name: true, email: true } },
-      },
       orderBy: { createdAt: "desc" },
     });
 
