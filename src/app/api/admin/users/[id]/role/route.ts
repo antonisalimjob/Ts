@@ -29,7 +29,7 @@ async function verifyAdminAccess(req: NextRequest) {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await verifyAdminAccess(req);
   if (!auth.authorized) {
@@ -37,7 +37,8 @@ export async function PATCH(
   }
 
   try {
-    const userId = params.id;
+    // Await params untuk kompatibilitas Next.js 15 App Router
+    const { id: userId } = await params;
     const body = await req.json();
     const { role } = body;
 
