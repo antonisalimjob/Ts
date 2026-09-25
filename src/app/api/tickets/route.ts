@@ -1,133 +1,55 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
-import { jsonError } from "@/lib/http";
-import { isAgent } from "@/lib/permissions";
-import { nextTicketKey, slaDueDates } from "@/lib/sla";
-import { buildSlaView } from "@/lib/sla";
-import { logActivity } from "@/lib/tickets";
+import { jwtVerify } from "jose";
+import { SESSION_COOKIE } from "@/lib/constants";
+import { authSecret } from "@/lib/env";
 
-const createSchema = z.object({
-  title: z.string().min(4),
-  description: z.string().min(8),
-  type: z.enum(["INCIDENT", "SERVICE_REQUEST", "PROBLEM", "CHANGE_REQUEST"]),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).default("MEDIUM"),
-  categoryId: z.string().min(1),
-  requesterId: z.string().optional(),
-  assigneeId: z.string().nullable().optional(),
-});
+export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const user = await requireSession();
-    const { searchParams } = new URL(request.url);
-    const q = searchParams.get("q")?.trim();
-    const status = searchParams.get("status");
-    const type = searchParams.get("type");
-    const priority = searchParams.get("priority");
-    const mine = searchParams.get("mine") === "1";
+    const token = req.cookies.get(SESSION_COOKIE)?.value;
+    if (!token) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const secret = new TextEncoder().encode(authSecret());
+    const { payload } = await jwtVerify(token, secret);
+
+    const userId = payload.id as string;
+    const userRole = payload.role as string;
+
+    let whereClause: any = {};
+
+    // 1. END_USER: Hanya boleh melihat tiket buatan dirinya sendiri
+    if (userRole === "END_USER") {
+      whereClause = { createdById: userId };
+    } 
+    // 2. TECHNICIAN: Boleh melihat tiket yang ditugaskan ke dirinya atau timnya
+    else if (userRole === "TECHNICIAN") {
+      whereClause = {
+        OR: [
+          { assignedToId: userId },
+          { status: "OPEN" }, // Tiket antrean publik yang siap ditangani
+        ],
+      };
+    }
+    // 3. ADMIN: Tidak ada pembatasan (whereClause = {} mencakup seluruh tiket)
 
     const tickets = await prisma.ticket.findMany({
-      where: {
-        ...(user.role === "END_USER" ? { requesterId: user.id } : {}),
-        ...(mine && isAgent(user.role) ? { assigneeId: user.id } : {}),
-        ...(status ? { status: status as never } : {}),
-        ...(type ? { type: type as never } : {}),
-        ...(priority ? { priority: priority as never } : {}),
-        ...(q
-          ? {
-              OR: [
-                { key: { contains: q, mode: "insensitive" } },
-                { title: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-      },
+      where: whereClause,
       include: {
-        category: true,
-        requester: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            avatarUrl: true,
-            department: true,
-            title: true,
-          },
-        },
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-            avatarUrl: true,
-            department: true,
-            title: true,
-          },
-        },
-        slaPolicy: true,
+        createdBy: { select: { name: true, email: true } },
+        assignedTo: { select: { name: true, email: true } },
       },
-      orderBy: { lastActivityAt: "desc" },
+      orderBy: { createdAt: "desc" },
     });
 
+    return NextResponse.json({ success: true, tickets });
+  } catch (error: any) {
     return NextResponse.json(
-      tickets.map((ticket) => ({
-        ...ticket,
-        createdAt: ticket.createdAt.toISOString(),
-        lastActivityAt: ticket.lastActivityAt.toISOString(),
-        sla: buildSlaView(ticket),
-      })),
+      { success: false, error: error?.message || "Failed to fetch tickets" },
+      { status: 500 }
     );
-  } catch {
-    return jsonError("Unauthorized", 401);
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const user = await requireSession();
-    const parsed = createSchema.safeParse(await request.json());
-    if (!parsed.success) return jsonError("Check the ticket fields and try again.");
-
-    const requesterId =
-      isAgent(user.role) && parsed.data.requesterId ? parsed.data.requesterId : user.id;
-    const slaPolicy = await prisma.slaPolicy.findUnique({
-      where: { priority: parsed.data.priority },
-    });
-    if (!slaPolicy) return jsonError("No SLA policy for that priority.");
-
-    const due = slaDueDates(parsed.data.priority);
-    const key = await nextTicketKey(parsed.data.type);
-
-    const ticket = await prisma.ticket.create({
-      data: {
-        key,
-        title: parsed.data.title,
-        description: parsed.data.description,
-        type: parsed.data.type,
-        priority: parsed.data.priority,
-        categoryId: parsed.data.categoryId,
-        requesterId,
-        assigneeId: isAgent(user.role) ? parsed.data.assigneeId ?? null : null,
-        slaPolicyId: slaPolicy.id,
-        firstResponseDueAt: due.firstResponseDueAt,
-        resolutionDueAt: due.resolutionDueAt,
-        status: parsed.data.assigneeId ? "OPEN" : "NEW",
-      },
-    });
-
-    await logActivity({
-      ticketId: ticket.id,
-      actorId: user.id,
-      action: "CREATED",
-      toValue: ticket.key,
-    });
-
-    return NextResponse.json({ key: ticket.key }, { status: 201 });
-  } catch {
-    return jsonError("Unauthorized", 401);
   }
 }
