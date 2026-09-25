@@ -1,50 +1,82 @@
-import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createSessionToken, createTwoFactorChallenge, sessionCookieOptions } from "@/lib/auth";
-import { SESSION_COOKIE, TWO_FACTOR_COOKIE } from "@/lib/constants";
-import { jsonError } from "@/lib/http";
+import bcrypt from "bcryptjs";
+import { SignJWT } from "jose";
+import { SESSION_COOKIE } from "@/lib/constants";
+import { authSecret } from "@/lib/env";
 
-const schema = z.object({
-  email: z.string().email(),
-  password: z.string().min(6),
-});
+export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
-  const body = schema.safeParse(await request.json());
-  if (!body.success) return jsonError("Invalid credentials", 400);
+export async function POST(req: NextRequest) {
+  try {
+    const { email, password } = await req.json();
 
-  const user = await prisma.user.findUnique({ where: { email: body.data.email.toLowerCase() } });
-  if (!user || !user.isActive) return jsonError("Invalid credentials", 401);
+    if (!email || !password) {
+      return NextResponse.json(
+        { success: false, error: "Email dan password wajib diisi" },
+        { status: 400 }
+      );
+    }
 
-  const matches = await bcrypt.compare(body.data.password, user.passwordHash);
-  if (!matches) return jsonError("Invalid credentials", 401);
+    // Cari user di database berdasarkan email
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
 
-  if (user.isTwoFactorEnabled && user.twoFactorSecret) {
-    const challenge = await createTwoFactorChallenge(user.id);
-    const response = NextResponse.json({ requiresTwoFactor: true });
-    response.cookies.set(TWO_FACTOR_COOKIE, challenge, sessionCookieOptions(60 * 5));
-    return response;
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Email atau password salah" },
+        { status: 401 }
+      );
+    }
+
+    // Jika user terdaftar via Google OAuth, beri petunjuk login
+    if (user.passwordHash === "OAUTH_GOOGLE_ACCOUNT") {
+      return NextResponse.json(
+        { success: false, error: "Akun ini terdaftar via Google. Silakan klik tombol Sign In with Google." },
+        { status: 400 }
+      );
+    }
+
+    // Verifikasi kata sandi
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { success: false, error: "Email atau password salah" },
+        { status: 401 }
+      );
+    }
+
+    // Buat JWT Session resmi aplikasi
+    const secret = new TextEncoder().encode(authSecret());
+    const jwtToken = await new SignJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("7d")
+      .sign(secret);
+
+    const res = NextResponse.json({ success: true, user });
+
+    // Set cookie resmi SESSION_COOKIE
+    res.cookies.set({
+      name: SESSION_COOKIE,
+      value: jwtToken,
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return res;
+  } catch (error: any) {
+    console.error("Login Error:", error);
+    return NextResponse.json(
+      { success: false, error: error?.message || "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  const token = await createSessionToken({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    avatarUrl: user.avatarUrl,
-    department: user.department,
-    title: user.title,
-  });
-
-  const response = NextResponse.json({
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-  });
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(60 * 60 * 24 * 7));
-  response.cookies.delete(TWO_FACTOR_COOKIE);
-  return response;
 }
