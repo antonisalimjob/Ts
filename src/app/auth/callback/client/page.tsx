@@ -7,13 +7,19 @@ export default function AuthCallbackClientPage() {
 
   useEffect(() => {
     const handleAuth = async () => {
+      // Ambil token dari hash (#access_token=...) atau query string (?access_token=...)
       const hash = window.location.hash;
       const search = window.location.search;
 
-      const params = new URLSearchParams(
-        hash ? hash.replace("#", "?") : search
-      );
-      const accessToken = params.get("access_token");
+      let accessToken: string | null = null;
+
+      if (hash && hash.includes("access_token")) {
+        const params = new URLSearchParams(hash.replace("#", "?"));
+        accessToken = params.get("access_token");
+      } else if (search && search.includes("access_token")) {
+        const params = new URLSearchParams(search);
+        accessToken = params.get("access_token");
+      }
 
       if (accessToken) {
         try {
@@ -28,7 +34,6 @@ export default function AuthCallbackClientPage() {
 
           if (res.ok && data.success) {
             setStatus("Success! Redirecting to workspace...");
-            // Tunggu 300ms agar browser tuntas menulis cookie HTTP-Only
             setTimeout(() => {
               window.location.replace("/admin/teams");
             }, 300);
@@ -44,7 +49,7 @@ export default function AuthCallbackClientPage() {
       setStatus("Authentication failed. Returning to login...");
       setTimeout(() => {
         window.location.replace("/login");
-      }, 1000);
+      }, 1200);
     };
 
     handleAuth();
