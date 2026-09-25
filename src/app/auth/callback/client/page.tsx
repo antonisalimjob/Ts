@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function AuthCallbackClientPage() {
+  const [status, setStatus] = useState("Authenticating with Google...");
+
   useEffect(() => {
     const handleAuth = async () => {
-      // Ambil token dari URL Fragment (#access_token=...) atau query string
       const hash = window.location.hash;
       const search = window.location.search;
-      
+
       const params = new URLSearchParams(
         hash ? hash.replace("#", "?") : search
       );
@@ -16,25 +17,34 @@ export default function AuthCallbackClientPage() {
 
       if (accessToken) {
         try {
-          // Sync user ke Prisma & simpan cookie
+          setStatus("Synchronizing user session...");
           const res = await fetch("/api/auth/google-sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ accessToken }),
           });
 
-          if (res.ok) {
-            // Gunakan Hard Redirect agar cookie user_session langsung aktif secara Server-Side
-            window.location.href = "/admin/teams";
+          const data = await res.json();
+
+          if (res.ok && data.success) {
+            setStatus("Success! Redirecting to workspace...");
+            // Tunggu 300ms agar browser tuntas menulis cookie HTTP-Only
+            setTimeout(() => {
+              window.location.replace("/admin/teams");
+            }, 300);
             return;
+          } else {
+            console.error("Sync failed:", data.error);
           }
         } catch (err) {
           console.error("Auth sync error:", err);
         }
       }
 
-      // Jika gagal atau tidak ada token, kembalikan ke login
-      window.location.href = "/login";
+      setStatus("Authentication failed. Returning to login...");
+      setTimeout(() => {
+        window.location.replace("/login");
+      }, 1000);
     };
 
     handleAuth();
@@ -43,8 +53,8 @@ export default function AuthCallbackClientPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-4">
       <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-      <h2 className="text-lg font-semibold">Authenticating with Google...</h2>
-      <p className="text-xs text-slate-400 mt-1">Please wait while we log you into Nexus SM.</p>
+      <h2 className="text-lg font-semibold">{status}</h2>
+      <p className="text-xs text-slate-400 mt-1">Please wait while we set up your workspace.</p>
     </div>
   );
 }
