@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -10,6 +10,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+
+  // Deteksi jika browser dialihkan dari Supabase OAuth membawa hash #access_token=...
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash.includes("access_token")) {
+      // Teruskan hash token ke client callback runner
+      router.push(`/auth/callback/client${window.location.hash}`);
+    }
+  }, [router]);
 
   // Form Submit (Email & Password)
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,10 +52,9 @@ export default function LoginPage() {
 
   // Google OAuth Auth
   const handleGoogleAuth = () => {
-    // Tautan direct ke endpoint Supabase OAuth Anda
     const supabaseProjectUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
     const redirectTo = encodeURIComponent(`${window.location.origin}/auth/callback`);
-    
+
     window.location.href = `${supabaseProjectUrl}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
   };
 
@@ -80,7 +87,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Form Kanan (Sign In / Sign Up) */}
+      {/* Form Kanan */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-slate-50">
         <div className="w-full max-w-md bg-white p-8 rounded-2xl shadow-sm border border-slate-200/80 space-y-6">
           <div>
@@ -136,7 +143,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Pemisah UI */}
           <div className="relative my-4 flex items-center justify-center">
             <div className="border-t border-slate-200 w-full"></div>
             <span className="bg-white px-3 text-xs text-slate-400 font-medium absolute">
@@ -144,7 +150,6 @@ export default function LoginPage() {
             </span>
           </div>
 
-          {/* Tombol Google Auth */}
           <button
             type="button"
             onClick={handleGoogleAuth}
@@ -171,7 +176,6 @@ export default function LoginPage() {
             {isSignUp ? "Sign Up with Google" : "Sign In with Google"}
           </button>
 
-          {/* Switcher Mode (Sign In <-> Sign Up) */}
           <div className="text-center pt-2 border-t border-slate-100">
             <p className="text-sm text-slate-600">
               {isSignUp
