@@ -11,6 +11,7 @@ interface UserItem {
 
 export default function AdminTeamsPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ id?: string; email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -18,7 +19,20 @@ export default function AdminTeamsPage() {
   const [editRole, setEditRole] = useState("END_USER");
   const [saving, setSaving] = useState(false);
 
-  // Fetch daftar user dengan parser serba aman
+  // Fetch identitas user aktif
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user || data);
+      }
+    } catch (e) {
+      console.warn("Gagal mengambil profil user aktif");
+    }
+  };
+
+  // Fetch daftar user
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -26,15 +40,10 @@ export default function AdminTeamsPage() {
       const data = await res.json();
 
       if (res.ok) {
-        if (Array.isArray(data)) {
-          setUsers(data);
-        } else if (Array.isArray(data.users)) {
-          setUsers(data.users);
-        } else if (Array.isArray(data.data)) {
-          setUsers(data.data);
-        } else {
-          setUsers([]);
-        }
+        if (Array.isArray(data)) setUsers(data);
+        else if (Array.isArray(data.users)) setUsers(data.users);
+        else if (Array.isArray(data.data)) setUsers(data.data);
+        else setUsers([]);
       }
     } catch (err) {
       console.error("Gagal mengambil data user:", err);
@@ -44,10 +53,10 @@ export default function AdminTeamsPage() {
   };
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchUsers();
   }, []);
 
-  // Buka Modal Edit
   const handleEditClick = (user: UserItem) => {
     setEditingUser(user);
     setEditName(user.name || "");
@@ -57,30 +66,28 @@ export default function AdminTeamsPage() {
     setEditRole(initialRole || "END_USER");
   };
 
-  // Simpan Perubahan User
   const handleSaveEdit = async () => {
     if (!editingUser) return;
-    setSaving(true);
 
+    // Proteksi UI: Cegah Admin mengubah role dirinya sendiri menjadi non-ADMIN
+    if (currentUser?.id === editingUser.id && editRole !== "ADMIN") {
+      alert("Anda tidak dapat mencabut hak akses Admin dari akun Anda sendiri.");
+      return;
+    }
+
+    setSaving(true);
     try {
-      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      const res = await fetch(`/api/admin/users/${editingUser.id}/role`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editName,
-          role: editRole,
-        }),
+        body: JSON.stringify({ role: editRole }),
       });
 
       if (!res.ok) {
         await fetch(`/api/admin/users`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: editingUser.id,
-            name: editName,
-            role: editRole,
-          }),
+          body: JSON.stringify({ id: editingUser.id, name: editName, role: editRole }),
         });
       }
 
@@ -94,23 +101,24 @@ export default function AdminTeamsPage() {
     }
   };
 
-  // Hapus User
-  const handleDeleteUser = async (id: string, email: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus user ${email}?`)) return;
+  const handleDeleteUser = async (user: UserItem) => {
+    // Proteksi UI: Cegah Admin menghapus akunnya sendiri
+    if (currentUser?.id === user.id || currentUser?.email === user.email) {
+      alert("Anda tidak dapat menghapus akun Admin yang sedang aktif digunakan.");
+      return;
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin menghapus user ${user.email}?`)) return;
 
     try {
-      const res = await fetch(`/api/admin/users/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        await fetch(`/api/admin/users?id=${id}`, {
-          method: "DELETE",
-        });
+      const res = await fetch(`/api/admin/users?id=${user.id}`, { method: "DELETE" });
+      if (res.ok) {
+        alert("User berhasil dihapus!");
+        fetchUsers();
+      } else {
+        const data = await res.json();
+        alert("Gagal: " + (data.error || "Gagal menghapus user"));
       }
-
-      alert("User berhasil dihapus!");
-      fetchUsers();
     } catch (err: any) {
       alert("Gagal menghapus user: " + err.message);
     }
@@ -124,34 +132,26 @@ export default function AdminTeamsPage() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6 text-slate-800">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Team & role management</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Create support teams, assign members, and change system roles. Admin only.
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900">Team & role management</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          Create support teams, assign members, and change system roles. Admin only.
+        </p>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 space-y-4">
-        <div className="flex gap-4 items-center">
-          <input
-            type="text"
-            placeholder="Search name, email, or department"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-          />
-        </div>
+        <input
+          type="text"
+          placeholder="Search name, email, or department"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        />
 
         {loading ? (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            Loading team members...
-          </div>
+          <div className="text-center py-12 text-slate-400 text-sm">Loading team members...</div>
         ) : filteredUsers.length === 0 ? (
-          <div className="text-center py-12 text-slate-400 text-sm">
-            Tidak ada user ditemukan.
-          </div>
+          <div className="text-center py-12 text-slate-400 text-sm">Tidak ada user ditemukan.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
@@ -164,60 +164,64 @@ export default function AdminTeamsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/50">
-                    <td className="py-3.5 px-4 font-semibold text-slate-900">
-                      {u.name || "-"}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600">{u.email}</td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
-                          u.role === "ADMIN"
-                            ? "bg-purple-100 text-purple-700"
-                            : u.role === "TECHNICIAN"
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      <button
-                        onClick={() => handleEditClick(u)}
-                        className="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-xs font-semibold text-slate-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(u.id, u.email)}
-                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredUsers.map((u) => {
+                  const isSelf = currentUser?.id === u.id || currentUser?.email === u.email;
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-50/50">
+                      <td className="py-3.5 px-4 font-semibold text-slate-900">
+                        {u.name || "-"} {isSelf && <span className="text-xs font-normal text-slate-400">(You)</span>}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">{u.email}</td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
+                            u.role === "ADMIN"
+                              ? "bg-purple-100 text-purple-700"
+                              : u.role === "TECHNICIAN"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}
+                        >
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right space-x-2">
+                        <button
+                          onClick={() => handleEditClick(u)}
+                          className="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-xs font-semibold text-slate-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={isSelf}
+                          className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                            isSelf
+                              ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                              : "bg-rose-600 hover:bg-rose-700 text-white"
+                          }`}
+                          title={isSelf ? "Cannot delete active session account" : ""}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Modal Edit User */}
       {editingUser && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4 border border-slate-200">
-            <h3 className="text-lg font-bold text-slate-900">
-              Edit User: {editingUser.email}
-            </h3>
+            <h3 className="text-lg font-bold text-slate-900">Edit User: {editingUser.email}</h3>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  FULL NAME
-                </label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">FULL NAME</label>
                 <input
                   type="text"
                   value={editName}
@@ -227,9 +231,7 @@ export default function AdminTeamsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  SYSTEM ROLE
-                </label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">SYSTEM ROLE</label>
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value)}
