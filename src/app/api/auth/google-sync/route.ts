@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { SignJWT } from "jose";
+import { SESSION_COOKIE } from "@/lib/constants";
+import { authSecret } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +44,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cari user yang sudah terdaftar
     let user = await prisma.user.findUnique({
       where: { email },
     });
 
-    // Jika user belum ada, daftarkan otomatis dengan role 'USER'
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -58,12 +59,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Buat JWT Token resmi agar lolos verifikasi jwtVerify di middleware.ts
+    const secret = new TextEncoder().encode(authSecret());
+    const jwtToken = await new SignJWT({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime("7d")
+      .sign(secret);
+
     const res = NextResponse.json({ success: true, user });
 
-    // Set cookie session dengan SameSite lax agar terbaca langsung saat redirect
+    // Set cookie menggunakan NAMA COOKIE RESMI yang dibaca oleh middleware (SESSION_COOKIE)
     res.cookies.set({
-      name: "user_session",
-      value: JSON.stringify({ id: user.id, email: user.email, role: user.role }),
+      name: SESSION_COOKIE,
+      value: jwtToken,
       httpOnly: true,
       sameSite: "lax",
       secure: true,
