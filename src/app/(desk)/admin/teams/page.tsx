@@ -7,7 +7,6 @@ interface UserItem {
   name: string;
   email: string;
   role: string;
-  teams?: string[];
 }
 
 export default function AdminTeamsPage() {
@@ -19,16 +18,23 @@ export default function AdminTeamsPage() {
   const [editRole, setEditRole] = useState("END_USER");
   const [saving, setSaving] = useState(false);
 
-  // Fetch daftar user
+  // Fetch daftar user dengan parser serba aman
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/admin/users");
       const data = await res.json();
-      if (res.ok && data.users) {
-        setUsers(data.users);
-      } else if (data.data) {
-        setUsers(data.data);
+
+      if (res.ok) {
+        if (Array.isArray(data)) {
+          setUsers(data);
+        } else if (Array.isArray(data.users)) {
+          setUsers(data.users);
+        } else if (Array.isArray(data.data)) {
+          setUsers(data.data);
+        } else {
+          setUsers([]);
+        }
       }
     } catch (err) {
       console.error("Gagal mengambil data user:", err);
@@ -45,7 +51,6 @@ export default function AdminTeamsPage() {
   const handleEditClick = (user: UserItem) => {
     setEditingUser(user);
     setEditName(user.name || "");
-    // Petakan role agar sesuai dengan enum Prisma (ADMIN, TECHNICIAN, END_USER)
     let initialRole = user.role;
     if (initialRole === "CLIENT" || initialRole === "USER") initialRole = "END_USER";
     if (initialRole === "AGENT") initialRole = "TECHNICIAN";
@@ -67,7 +72,6 @@ export default function AdminTeamsPage() {
         }),
       });
 
-      // Fallback jika API menggunakan /api/admin/users
       if (!res.ok) {
         await fetch(`/api/admin/users`, {
           method: "PUT",
@@ -143,6 +147,10 @@ export default function AdminTeamsPage() {
         {loading ? (
           <div className="text-center py-12 text-slate-400 text-sm">
             Loading team members...
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="text-center py-12 text-slate-400 text-sm">
+            Tidak ada user ditemukan.
           </div>
         ) : (
           <div className="overflow-x-auto">
