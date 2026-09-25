@@ -14,7 +14,7 @@ export default function LoginPage() {
   // Deteksi jika browser dialihkan dari Supabase OAuth membawa hash #access_token=...
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash.includes("access_token")) {
-      // Teruskan hash token ke client callback runner
+      // Teruskan hash token langsung ke client callback handler
       router.push(`/auth/callback/client${window.location.hash}`);
     }
   }, [router]);
@@ -50,10 +50,10 @@ export default function LoginPage() {
     }
   };
 
-  // Google OAuth Auth
+  // Google OAuth Auth - Mengarahkan LANGSUNG ke /auth/callback/client
   const handleGoogleAuth = () => {
     const supabaseProjectUrl = "https://hbblarnhwbvmotzjxjsh.supabase.co";
-    const redirectTo = encodeURIComponent(`${window.location.origin}/auth/callback`);
+    const redirectTo = encodeURIComponent(`${window.location.origin}/auth/callback/client`);
 
     window.location.href = `${supabaseProjectUrl}/auth/v1/authorize?provider=google&redirect_to=${redirectTo}`;
   };
